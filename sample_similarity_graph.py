@@ -3,9 +3,11 @@ import axelrodVoice as axlV
 
 # Define the subject and opponent sets
 subjects = [s().name for s in axlV.strategiesNew]
+for boring_strats in ["ALTRcx", "ALTRxx", "RAND", "RANDcx", "RANDxx"]: subjects.remove(boring_strats)
 #subjects = [axlV.Cooperator().name, axlV.Defector().name, axlV.Grudger().name, axlV.TitForTat().name]
-opponents = [o().name for o in axlV.strategiesTestD + axlV.strategiesTestL]
+#opponents = [o().name for o in axlV.strategiesTestD + axlV.strategiesTestL]
 #opponents = [axlV.Defector().name, axlV.TestDp15().name, axlV.FaceValue().name, axlV.Random().name]
+opponents = [o().name for o in axlV.strategiesAll]
 
 
 # Create the graph object
@@ -22,7 +24,7 @@ graph = axlV.SimilarityGraph()
 graph.reload_data("full_data.csv")
 
 
-# Define R(s,o) and epsilon
+# Create clusters using behaviors
 graph.partition_by_metric_and_threshold( behaviors=["avg_score"], threshold=0.07, subjects=subjects, opponents=opponents)
 
 # REMARK: Behaviors is an n-tuple. Partitions are made using Euclidean distance and UPGMA.
@@ -30,5 +32,5 @@ graph.partition_by_metric_and_threshold( behaviors=["avg_score"], threshold=0.07
 #  ......... threshold of .06 to .07 worked well
 
 
-# Draw the graph. Hide nodes that don't share any partitions. Show and save the graph.
-graph.draw_similarity_graph(node_outlier_thresh=1, show=True, filename="similarity_graph.png")
+# Draw the graph. Determine the least visible edge (for coloring). Show and save the graph.
+graph.draw_similarity_graph(edge_outlier_thresh=0.4, show=True, filename="similarity_graph.png")
