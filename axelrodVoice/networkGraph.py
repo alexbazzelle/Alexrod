@@ -6,6 +6,7 @@ from scipy.cluster.hierarchy import linkage, fcluster
 from matplotlib import colormaps, colors, pyplot as plt
 import networkx as nx
 import pandas as pd
+import numpy as np
 
 class SimilarityGraph:
     def __init__(self):
@@ -16,7 +17,7 @@ class SimilarityGraph:
         ])
         self.subjects: list[str] = []
         self.opponents: list[str] = []
-        self.partitions = pd.DataFrame(columns=["s_i"])
+        self.partitions = pd.DataFrame(columns=["cluster"])
         self.frequency_table = pd.DataFrame(columns=[])
 
     @staticmethod
@@ -97,6 +98,7 @@ class SimilarityGraph:
                     subjects: list[str] | None = None,
                     opponents: list[str] | None = None,
                     start=1,         end=200):
+        # FUTURE WORK: Use Principal Component Analysis (PCA) to identify important behaviors
 
         # Update subjects and opponents if needed
         if subjects is not None: self.subjects = subjects
@@ -129,9 +131,8 @@ class SimilarityGraph:
                 distances = pdist(observed_behavior, metric='euclidean')
 
                 # Compute clusters such that d < threshold for all d in distances
-                # (uses UPGMA to make partitions)
-                clusters = linkage(distances, method='average') # Compute hierarchical clusters
-                cluster_labels = fcluster(clusters, t=threshold, criterion='distance') # Apply threshold and make usable
+                cluster_dendogram = linkage(distances, method='average') # Compute hierarchical clusters
+                cluster_labels = fcluster(cluster_dendogram, t=threshold, criterion='distance') # Apply thresholds
 
                 # Store clusters
                 cluster_ids = [ c + cluster_counter for c in cluster_labels ] # Each one gets a unique id
@@ -146,67 +147,66 @@ class SimilarityGraph:
                            .groupby("cluster_id")["subject"]
                            .apply(frozenset)
                            .reset_index()
-                           .set_axis(["cluster_id","s_i"], axis=1)
-                           .drop_duplicates(subset="s_i")
+                           .set_axis(["cluster_id","cluster"], axis=1)
+                           .drop_duplicates(subset="cluster")
                            .drop(columns=["cluster_id"]))
 
         return self.partitions
 
     def partitions_to_freq_tbl(self):
-        # Count shared partitions
-        mate_frequency = {}
-        for s_i in self.partitions["s_i"]: # for each set of strategies
-            for s1, s2 in combinations(sorted(s_i), 2): # get all 2-way combos
-                mate_frequency[ (s1,s2) ] = mate_frequency.get( (s1,s2), 0) + 1 # add them to the dictionary
+        count_occurrences = pd.DataFrame(0, index=self.subjects, columns=self.subjects)
 
-        # Build frequency table
-        self.frequency_table = pd.DataFrame(0, index=self.subjects, columns=self.subjects)
-        for (s1, s2), freq in mate_frequency.items():
-            self.frequency_table.loc[s1, s2] = freq
-            self.frequency_table.loc[s2, s1] = freq
-            if s1 == s2: self.frequency_table.loc[s1, s1] = sum( (s1 in s_i) for s_i in self.partitions["s_i"] )
+        for cluster in self.partitions["cluster"]:
+            # Count the total clusters each subject appears in
+            for subject in cluster: count_occurrences.loc[subject,subject] += 1
+            # Count the shared clusters for each combination of subjects
+            for s1, s2 in combinations(cluster, 2):
+                count_occurrences.loc[s1, s2] += 1
+                count_occurrences.loc[s2, s1] += 1
+
+        # Build the probability frequency table. Index I,J is P(J|I) for chance of sharing cluster.
+        # This table is akin to a Markov Chain
+        self.frequency_table = pd.DataFrame(0.0, index=self.subjects, columns=self.subjects)
+        for s1,s2 in combinations(self.subjects, 2):
+            self.frequency_table.loc[s1,s2] = count_occurrences.loc[s1,s2] / count_occurrences.loc[s1,s1]
+            self.frequency_table.loc[s2,s1] = count_occurrences.loc[s2,s1] / count_occurrences.loc[s2,s2]
 
         return self.frequency_table
 
     # Create the similarity graph
-    def draw_similarity_graph(self, node_outlier_thresh: float=0, edge_outlier_thresh: float=0, show=True, filename: str | None = None) -> None:
+    def draw_similarity_graph(self, edge_outlier_thresh: float=0, show=True, filename: str | None = None) -> None:
         # Get the variables
         group_freq_tbl = self.partitions_to_freq_tbl()
-        subjects = self.subjects
 
         # Add edges to graph
         plt.close()
-        G = nx.from_pandas_adjacency(group_freq_tbl)
-
-        # Remove nodes with no strong connections
-        maximum_weight = 0
-        for subject in subjects:
-            if group_freq_tbl[subject].max() > maximum_weight: maximum_weight = group_freq_tbl[subject].max()
-            if group_freq_tbl[subject].max() < node_outlier_thresh:
-                G.remove_node(subject); print(f"...removed node {subject}")
+        G = nx.from_pandas_adjacency(group_freq_tbl, create_using=nx.DiGraph)
+        sorted_edges = sorted(G.edges(data=True), key=lambda edge: edge[2].get('weight', 1))
+        G = nx.from_edgelist(sorted_edges, create_using=nx.DiGraph)
 
         # Position based on edge weights
         pos = nx.forceatlas2_layout(G, weight="weight", seed=1, linlog=False)
 
-        # Make discrete colormap and apply to edges
-        edge_cmap = []
-        for i in range (0, maximum_weight + 1):
-            scaled_color = i / maximum_weight
-            transparency = scaled_color if scaled_color > edge_outlier_thresh else 0
-            edge_cmap.append(colormaps["Blues"](scaled_color, alpha=transparency))
-        edge_cmap = colors.ListedColormap(edge_cmap)
-        edgeColors = [edge_cmap(weight/maximum_weight) for u, v, weight in G.edges(data='weight')]
+        # Create custom colormap
+        blank_slots = int(np.floor(edge_outlier_thresh * 256))
+        cmap = [[0.0, 0.0, 0.0, 0.0] for _ in range(blank_slots)]
+        cmap_colors = colormaps["Blues"](np.linspace(0, 1, 256-blank_slots))
+        cmap_colors[:,3] = [min(v + 0.1, 1) for v in np.linspace(0, 1, 256-blank_slots)]
+        cmap.extend(cmap_colors)
+        edge_cmap = colors.ListedColormap(cmap)
+        # Apply cmap to edges
+        edgeColors = [edge_cmap(w) for _, _, w in G.edges(data='weight')]
 
         # Draw the network graph
-        nx.draw_networkx_nodes(G, pos, node_size=430, node_color="powderblue", cmap='tab20', alpha=0.7)
-        nx.draw_networkx_edges(G, pos, width=2.5, edge_color=edgeColors)
+        nx.draw_networkx_nodes(G, pos, node_size=430, node_color="powderblue", cmap='tab20', alpha=1)
+        nx.draw_networkx_edges(G, pos, edge_color=edgeColors, arrows=True, arrowstyle='simple, tail_width=0.09, head_width=0.6, head_length=0.6')
         nx.draw_networkx_labels(G, pos, font_size=5, font_family="serif", font_weight="bold")
 
         # Adjust figure settings
         plt.tight_layout()
         fig = plt.gcf()
-        fig_scale = 1; fig.set_size_inches(fig_scale * fig.get_figheight(), fig_scale * fig.get_figheight())
-        sm = plt.cm.ScalarMappable(cmap=edge_cmap, norm=plt.Normalize(vmin=0, vmax=maximum_weight + 1))
-        plt.colorbar(sm, ax=fig.axes, location='right', fraction=0.05, ticks=range(maximum_weight + 1))
+        fig_scale = 2; fig.set_size_inches(fig_scale * fig.get_figheight(), fig_scale * fig.get_figheight())
+        colorbar_sm = plt.cm.ScalarMappable(cmap=colors.ListedColormap(cmap_colors), norm=plt.Normalize(vmin=edge_outlier_thresh, vmax=1))
+        plt.colorbar(colorbar_sm, ax=fig.axes, location='right')
         if filename: fig.canvas.manager.set_window_title(filename); fig.savefig(filename, transparent=True, dpi=300)
         if show: plt.show()
