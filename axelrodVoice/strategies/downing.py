@@ -9,8 +9,8 @@ Assumes the opponent is a lag-one matching strategy and maximizes EV while deter
 Picks between 10 different strategies (4 monotone, 6 alternating)
 """
 DEBUG = False
-class Downing(axlDowningR, Player):
-    name = "DOWN"
+class Downing12(axlDowningR, Player):
+    name = "DOWN12"
 
     def __init__(self) -> None:
         super().__init__()
@@ -226,3 +226,99 @@ class DowningRCX(axlDowningR, Player):
     name = "DOWRcx"
     def strategy_voice(self, opponent : Player) -> Action:
         return Action.C
+
+
+
+
+"""
+Assumes the opponent is a lag-one matching strategy and maximizes EV while determining opponent's probabilities.
+Picks between 10 different strategies (4 monotone, 6 alternating)
+"""
+C = Action.C
+D = Action.D
+DEBUG = False
+class Downing(axlDowningR, Player):
+    name = "DOWN"
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.voice = C
+        self.choice = C
+
+        self.op_coops_Yx = {"Cc":0, "Cd":0, "Dc":0, "Dd":0}
+        self.op_total_Yx = {"Cc": 0, "Cd": 0, "Dc": 0, "Dd": 0}
+        self.op_prob_Yx = {"Cc": 1.0, "Cd": 0, "Dc": 0, "Dd": 0.0}
+
+    def strategy_voice(self, opponent : Player) -> Action:
+        round_number = len(self.history) + 1
+
+        if round_number == 1: return self.voice # no data
+        if round_number == 2: last_moves = (Action.C, self.history_voice[-1]) # partial data
+        if round_number > 2: last_moves = (self.history[-2], self.history_voice[-1]) # full data!
+
+        # Calculate the opponent's probabilities
+        match last_moves:
+            case (Action.C, Action.C): move = "Cc"
+            case (Action.C, Action.D): move = "Cd"
+            case (Action.D, Action.C): move = "Dc"
+            case (Action.D, Action.D): move = "Dd"
+
+        total = self.op_total_Yx.get(move) + 1
+        coops = self.op_coops_Yx.get(move) + (1 if opponent.history[-1] == C else 0)
+        prob = coops / total
+
+        self.op_total_Yx.update( {move : total} )
+        self.op_coops_Yx.update( {move: coops} )
+        self.op_prob_Yx.update( {move: prob} )
+
+
+        # Calculate expected score per turn
+        ev_mono_strats = {
+            "all_dC": 3 * self.op_prob_Yx.get("Cd"),
+            "all_dD": 4 * self.op_prob_Yx.get("Dd") + 1,
+            "all_cD": 4 * self.op_prob_Yx.get("Dc") + 1,
+            "all_cC": 3 * self.op_prob_Yx.get("Cc"),
+        }
+        ev_alt_strats = {
+            "alt_cC_cD": 0.5 * (3 * self.op_prob_Yx.get("Dc") + 4 * self.op_prob_Yx.get("Cc") + 1),
+            "alt_cC_dD": 0.5 * (3 * self.op_prob_Yx.get("Dc") + 4 * self.op_prob_Yx.get("Cd") + 1),
+            "alt_cC_dC": 0.5 * (3 * self.op_prob_Yx.get("Cc") + 3 * self.op_prob_Yx.get("Cd")),
+            "alt_dC_dD": 0.5 * (3 * self.op_prob_Yx.get("Dd") + 4 * self.op_prob_Yx.get("Cd") + 1),
+            "alt_dC_cD": 0.5 * (3 * self.op_prob_Yx.get("Dd") + 4 * self.op_prob_Yx.get("Cc") + 1),
+            "alt_cD_dD": 0.5 * (4 * self.op_prob_Yx.get("Dc") + 1 + 4 * self.op_prob_Yx.get("Dd") + 1)
+        }
+
+        # Find the best strategy
+        if max(ev_mono_strats.values()) >= max(ev_alt_strats.values()):
+            match max(ev_mono_strats, key=ev_mono_strats.get):
+                case "all_cC": self.voice, self.choice = C, C
+                case "all_dC": self.voice, self.choice = D, C
+                case "all_dD": self.voice, self.choice = D, D
+                case "all_cD": self.voice, self.choice = C, D
+                case _: self.voice, self.choice = C, C
+        else:
+            match max(ev_alt_strats):
+                case "alt_cC_dC":
+                    self.voice = C if self.history_voice[-1] == D else D
+                    self.choice = C
+                case "alt_dC_dD":
+                    self.voice = D
+                    self.choice = C if self.history[-1] == D else D
+                case "alt_dC_cD":
+                    self.voice = C if self.history_voice[-1] == D else D
+                    self.choice = C if self.voice == D else D
+                case "alt_cD_dD":
+                    self.voice = C if self.history_voice[-1] == D else D
+                    self.choice = D
+                case "alt_cC_dD":
+                    self.voice = C if self.history_voice[-1] == D else D
+                    self.choice = self.voice
+                case "alt_cC_cD":
+                    self.voice = C
+                    self.choice = C if self.history[-1] == D else D
+
+
+        return self.voice
+
+    def strategy(self, opponent : Player) -> Action:
+        return self.choice
