@@ -11,8 +11,8 @@ from .tullock import (Tullock, TullockIndependent, TullockCX, TullockXX)
 from .tidemanandchieruzzi import (TidemanAndChieruzzi, TidemanAndChieruzziRandom, TidemanAndChieruzziOrdered, TidemanAndChieruzziCX, TidemanAndChieruzziXX)
 from .feld import (FeldHonestToLiar, FeldLiarToHonest, FeldCX, FeldXX)
 from .shubik import (Shubik, ShubikCX, ShubikXX)
-from .downing import (Downing, DowningCX, DowningXX, DowningRCX, DowningRXX)
-from .unnamedstrategy import (UnnamedStrategy, UnnamedStrategyCX, UnnamedStrategyXX)
+from .downing import (Downing, DowningCX, DowningXX, DowningRCX, DowningRXX, Downing12)
+from .unnamedstrategy import (UnnamedStrategy, UnnamedNice, UnnamedStrategyCX, UnnamedStrategyXX)
 from .testers import *
 from .nydegger import (NydeggerCX, NydeggerXX)
 
@@ -20,15 +20,15 @@ from .nydegger import (NydeggerCX, NydeggerXX)
 strategiesCanon = [FaceValue, Random, Grudger, SteinAndRapoport,
                    Graaskamp, Grofman, JossLiar, Davis, Tullock,
                    TidemanAndChieruzzi, FeldLiarToHonest, Shubik,
-                   Downing, UnnamedStrategy, Cooperator]
+                   Downing, UnnamedStrategy, NydeggerXX]
 
 strategiesSolid = [Cooperator, AllBarkNoBite, Liar, Defector]
 
 strategiesNew = [TitForTat, TitForTatXX, FaceValue, TitForTatCX, TitFor2Tats,
                  Random, RandomCX, RandomXX, Alternator, AlternatorCX,
                  Liar, Cooperator, Defector, AllBarkNoBite,
-                 Grudger, SteinAndRapoport,
-                 SteinAndRapoportFV,
+                 Grudger,
+                 SteinAndRapoport, SteinAndRapoportFV,
                  Graaskamp,
                  Grofman,
                  JossLiar, JossClassic,
@@ -38,7 +38,7 @@ strategiesNew = [TitForTat, TitForTatXX, FaceValue, TitForTatCX, TitFor2Tats,
                  FeldHonestToLiar, FeldLiarToHonest,
                  Shubik,
                  Downing,
-                 UnnamedStrategy]
+                 UnnamedStrategy, UnnamedNice]
 
 strategiesXX = [
     TitForTatXX, RandomXX, Alternator, GrudgerXX, SteinAndRapoportXX,
